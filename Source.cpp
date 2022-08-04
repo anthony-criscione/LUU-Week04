@@ -81,13 +81,13 @@ bool shouldAddNode(std::vector<pathNode> potentials, pathNode candidate) {
 	return false;
 }
 
-int pathAStar(std::vector<pathNode> nodesIn, char sNode, char eNode) {
+int pathAStar(std::vector<pathNode *> nodesIn, char sNode, char eNode) {
 	if (sNode == eNode) return 0;
 
 	pathNode* startN = nullptr, * endN = nullptr;
 	for (int i = 0; i < nodesIn.size(); i++) {
-		if (nodesIn[i].ID == sNode) startN = &nodesIn[i];
-		else if (nodesIn[i].ID == eNode) endN = &nodesIn[i];
+		if (nodesIn[i]->ID == sNode) startN = nodesIn[i];
+		else if (nodesIn[i]->ID == eNode) endN = nodesIn[i];
 	}
 	if (startN == nullptr || endN == nullptr) {
 
@@ -104,35 +104,44 @@ int pathAStar(std::vector<pathNode> nodesIn, char sNode, char eNode) {
 	for (int i = 0; i < visNodes[0]->edgeOut.size(); i++) {
 		potNodes.push_back(visNodes[0]->edgeOut[i].endpoint);
 		potNodes[i]->prevNode = current;
-		//potNodes[i]->thisCost = visNodes[0]->edgeOut[i].cost;
 	}
 
 	while (potNodes.size() != 0) {
+		pathNode *decider = nullptr;
 		int costMin = INT32_MAX;
 		int potIndex = -1;
 		for (int i = 0; i < potNodes.size(); i++) {
+			// std::cout << "Pot Node " << i << ": " << potNodes[i]->ID << "\n";
+			current = potNodes[i]->prevNode;
+			int getVis = -1;
+			
 			if (potNodes[i]->ID == eNode) {
 				return potNodes[i]->prevNode->thisCost + potNodes[i]->prevNode->getEdgeCost(eNode);
 			}
-			else if (costMin > current->getEdgeCost(potNodes[i]->ID) + potNodes[i]->heuristic) {
+			else if (costMin > current->thisCost + current->getEdgeCost(potNodes[i]->ID) + potNodes[i]->heuristic) {
 				costMin = current->getEdgeCost(potNodes[i]->ID) + potNodes[i]->heuristic;
 				potIndex = i;
+				// std::cout << "Selecting " << i << " with weight " << costMin << "\n";
 			}
 		}
 		current->nextNode = potNodes[potIndex];
 		current = potNodes[potIndex];
 		if (current->thisCost == -1) {
 			current->thisCost = current->prevNode->getEdgeCost(current->ID) + current->prevNode->thisCost;
+			// std::cout << "Setting initial cost of " << current->thisCost << " at node " << current->ID << "\n";
 		}
-
 		for (int i = 0; i < current->edgeOut.size(); i++) {
 			if (current->edgeOut[i].endpoint->prevNode == nullptr) {
 				potNodes.push_back(current->edgeOut[i].endpoint);
 				current->edgeOut[i].endpoint->prevNode = current;
 			}
-			else if (current->edgeOut[i].endpoint->thisCost > current->thisCost + current->edgeOut[i].cost) {
+			else if (current->edgeOut[i].endpoint->thisCost > current->thisCost + current->edgeOut[i].cost || current->edgeOut[i].endpoint->thisCost == -1) {
 				current->edgeOut[i].endpoint->prevNode = current;
 				current->edgeOut[i].endpoint->thisCost = current->thisCost + current->edgeOut[i].cost;
+				//std::cout << "Setting a new cost of " << current->thisCost + current->edgeOut[i].cost << " at node " << current->edgeOut[i].endpoint->ID << "\n";
+			}
+			else {
+				//std::cout << "Skipping edge " << current->edgeOut[i].endpoint->ID << ".\n";
 			}
 		}
 		potNodes.erase(potNodes.begin() + potIndex);
@@ -211,14 +220,17 @@ int main() {
 	std::cout << distArray[inCount - 1] << "]\n";
 	std::cout << "It took " << endTime - startTime << " nanoseconds.\n";
 	
-	std::vector<pathNode> nodeList;
+	std::cout << "\nReading in Paths.txt from the default solution source path...\n";
+	std::vector<pathNode *> nodeList;
 	char nodes[2];
 	int cost;
 	char endC, startC;
 	std::ifstream fileIn("Paths.txt");
 	std::string line;
+	int lineC = 0;
 	while (std::getline(fileIn, line))
 	{
+		lineC++;
 		for (int i = 0; i < line.size(); i += 0)
 			if (line[i] == '(' || line[i] == ')' || line[i] == ',') line.erase(i, 1);
 			else i++;
@@ -236,30 +248,32 @@ int main() {
 			int foundA = -1;
 			int foundB = -1;
 			for (int i = 0; i < nodeList.size(); i++) {
-				if (nodeList[i].ID == nodes[0]) foundA = i;
-				else if (nodeList[i].ID == nodes[1]) foundB = i;
+				if (nodeList[i]->ID == nodes[0]) foundA = i;
+				else if (nodeList[i]->ID == nodes[1]) foundB = i;
 			}
 			if (foundA == -1) {
 				foundA = nodeList.size();
-				nodeList.push_back(pathNode(nodes[0]));
+				nodeList.push_back(new pathNode(nodes[0]));
 			}
 			if (foundB == -1) {
 				foundB = nodeList.size();
-				nodeList.push_back(pathNode(nodes[1]));
+				nodeList.push_back(new pathNode(nodes[1]));
 			}
-			nodeList[foundA].addEdge(&nodeList[foundB], cost);
-			nodeList[foundB].addEdge(&nodeList[foundA], cost);
+			nodeList[foundA]->addEdge( (nodeList[foundB]), cost);
+			nodeList[foundB]->addEdge( (nodeList[foundA]), cost);
 		}
 		else if (inCount == 2) {
-			// Set goal/ start
 			startC = nodes[0];
 			endC = nodes[1];
 		}
 		else {
-			// Bad input
-			;
+			std::cout << "Unparseable input on line " << lineC << ".\n";
 		}
 	}
-	std::cout << "====\n" << pathAStar(nodeList, startC, endC) << "\n====\n";
+	std::cout << "Starting node is " << startC << " and ending node is " << endC << ".\n";
+	int aStarCost = pathAStar(nodeList, startC, endC);
+	if (cost > -1) std::cout << "The A* evaluated cost of the node-graph traversal is " << aStarCost << ".\n";
+	else std::cout << "The algorithm could not find a path between the two provided nodes.\n";
+
 	return 0;
 }
